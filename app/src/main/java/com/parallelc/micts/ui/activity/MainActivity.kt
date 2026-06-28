@@ -1,7 +1,12 @@
 package com.parallelc.micts.ui.activity
 
 import android.annotation.SuppressLint
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +34,13 @@ import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 const val LOG_TAG = BuildConfig.APP_NAME
+private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
+private val ASSISTANT_HANDOFF_ACTIVITY_CANDIDATES = listOf(
+    "com.google.android.apps.search.assistant.surfaces.launcher.AssistantHandoffActivity",
+    "com.google.android.apps.search.assistant.surfaces.launcher.handoff.AssistantHandoffActivity",
+    "com.google.android.apps.search.assistant.surfaces.launcher.LauncherAssistantHandoffActivity",
+    "com.google.android.googlequicksearchbox.Launch.AssistantHandoffActivity",
+)
 
 private fun vibrateOnTrigger(context: Context) {
     runCatching {
@@ -46,6 +58,71 @@ private fun vibrateOnTrigger(context: Context) {
     }.onFailure { e ->
         val errMsg = "triggerCircleToSearch vibrate failed: " + e.stackTraceToString()
         module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
+    }
+}
+
+@Suppress("DEPRECATION")
+private fun resolveAssistantHandoffActivity(context: Context): ComponentName? {
+    val packageManager = context.packageManager
+    runCatching {
+        packageManager.getPackageInfo(GOOGLE_APP_PACKAGE, 0)
+    }.getOrElse {
+        Log.w(LOG_TAG, "AssistantHandoff fast path unavailable: Google package not found")
+        return null
+    }
+
+    val manifestActivities = runCatching {
+        packageManager.getPackageInfo(GOOGLE_APP_PACKAGE, PackageManager.GET_ACTIVITIES)
+            .activities
+            ?.map { it.name }
+            .orEmpty()
+    }.getOrDefault(emptyList())
+
+    val candidates = (
+        ASSISTANT_HANDOFF_ACTIVITY_CANDIDATES +
+            manifestActivities.filter {
+                it == "AssistantHandoffActivity" ||
+                    it.endsWith(".AssistantHandoffActivity") ||
+                    it.contains("AssistantHandoffActivity")
+            }
+        ).distinct()
+
+    for (activityName in candidates) {
+        val component = ComponentName(GOOGLE_APP_PACKAGE, activityName)
+        val resolved = runCatching {
+            packageManager.getActivityInfo(component, 0)
+        }.isSuccess
+        if (resolved) {
+            return component
+        }
+    }
+
+    Log.w(LOG_TAG, "AssistantHandoff fast path unavailable: activity cannot be resolved")
+    return null
+}
+
+private fun launchAssistantHandoff(context: Context, vibrate: Boolean): Boolean {
+    if (BuildConfig.APP_NAME != "MiCTS") return false
+    val component = resolveAssistantHandoffActivity(context) ?: return false
+    val intent = Intent(Intent.ACTION_MAIN)
+        .setComponent(component)
+    if (context !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    return runCatching {
+        context.startActivity(intent)
+        if (vibrate) vibrateOnTrigger(context)
+        Log.i(LOG_TAG, "AssistantHandoff fast path launched: ${component.className}")
+        true
+    }.getOrElse { e ->
+        val message = "AssistantHandoff fast path failed: ${component.className}"
+        if (e is ActivityNotFoundException || e is SecurityException) {
+            Log.w(LOG_TAG, message, e)
+        } else {
+            Log.e(LOG_TAG, message, e)
+        }
+        false
     }
 }
 
@@ -85,6 +162,11 @@ class MainActivity : ComponentActivity() {
         Log.i(LOG_TAG, "delayAndTrigger: start delayMs=$delayMs")
         if (delayMs > 0) {
             delay(delayMs)
+        }
+        if (launchAssistantHandoff(this, vibrate)) {
+            Log.i(LOG_TAG, "delayAndTrigger: fast path finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
+            finish()
+            return
         }
         if (!triggerCircleToSearch(1, this, vibrate)) {
             Toast.makeText(this, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
