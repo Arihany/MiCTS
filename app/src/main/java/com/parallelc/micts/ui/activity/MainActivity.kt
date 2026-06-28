@@ -27,6 +27,7 @@ import com.parallelc.micts.config.AppConfig.KEY_DEFAULT_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_TILE_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_VIBRATE
 import com.parallelc.micts.module
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -161,16 +162,21 @@ class MainActivity : ComponentActivity() {
         if (delayMs > 0) {
             delay(delayMs)
         }
-        if (launchAssistantHandoff(this, vibrate)) {
-            Log.i(LOG_TAG, "delayAndTrigger: fast path finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
+        Log.i(LOG_TAG, "delayAndTrigger: VIS + handoff combo start")
+        lifecycleScope.launch(Dispatchers.Default) {
+            if (!triggerCircleToSearch(1, this@MainActivity, vibrate)) {
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        window.decorView.postDelayed({
+            launchAssistantHandoff(this, false)
+        }, 30)
+        window.decorView.postDelayed({
+            Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
             finish()
-            return
-        }
-        if (!triggerCircleToSearch(1, this, vibrate)) {
-            Toast.makeText(this, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
-        }
-        Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
-        finish()
+        }, 500)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
