@@ -162,16 +162,16 @@ class MainActivity : ComponentActivity() {
         if (delayMs > 0) {
             delay(delayMs)
         }
-        Log.i(LOG_TAG, "delayAndTrigger: VIS + handoff combo start")
-        lifecycleScope.launch(Dispatchers.Default) {
-            if (!triggerCircleToSearch(1, this@MainActivity, vibrate)) {
-                runOnUiThread {
-                    Toast.makeText(this@MainActivity, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
+        Log.i(LOG_TAG, "delayAndTrigger: handoff + VIS combo start")
+        launchAssistantHandoff(this, false)
+        window.decorView.postDelayed({
+            lifecycleScope.launch(Dispatchers.Default) {
+                if (!triggerCircleToSearch(1, this@MainActivity, vibrate)) {
+                    runOnUiThread {
+                        Toast.makeText(this@MainActivity, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
-        }
-        window.decorView.postDelayed({
-            launchAssistantHandoff(this, false)
         }, 30)
         window.decorView.postDelayed({
             Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
