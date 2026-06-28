@@ -12,7 +12,7 @@ class LaunchTileService : TileService() {
     override fun onClick() {
         super.onClick()
 
-        val intent = Intent(this, MainActivity::class.java)
+        val intent = Intent(Intent.ACTION_MAIN).setClass(this, MainActivity::class.java)
         intent.putExtra("from_tile", true)
         intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
