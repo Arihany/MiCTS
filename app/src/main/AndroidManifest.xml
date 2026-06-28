@@ -32,6 +32,7 @@
             android:exported="true"
             android:theme="@style/Theme.App.Transparent"
             android:noHistory="true"
+            android:resizeableActivity="false"
             android:excludeFromRecents="true" >
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
