@@ -1,10 +1,7 @@
 package com.parallelc.micts.ui.activity
 
 import android.annotation.SuppressLint
-import android.content.ActivityNotFoundException
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
@@ -32,14 +29,6 @@ import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 const val LOG_TAG = BuildConfig.APP_NAME
-private const val ALLOW_ACTIVITY_VIS_FALLBACK = false
-private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
-private val ASSISTANT_HANDOFF_ACTIVITY_NAMES = listOf(
-    "com.google.android.apps.search.assistant.surfaces.launcher.AssistantHandoffActivity",
-    "com.google.android.apps.search.assistant.surfaces.launcher.handoff.AssistantHandoffActivity",
-    "com.google.android.apps.search.assistant.surfaces.launcher.LauncherAssistantHandoffActivity",
-    "com.google.android.googlequicksearchbox.Launch.AssistantHandoffActivity",
-)
 
 private fun vibrateOnTrigger(context: Context) {
     runCatching {
@@ -60,56 +49,8 @@ private fun vibrateOnTrigger(context: Context) {
     }
 }
 
-private fun triggerAssistantHandoff(context: Context, vibrate: Boolean): Boolean {
-    if (BuildConfig.APP_NAME != "MiCTS") return false
-
-    val packageManager = context.packageManager
-    val candidates = buildList {
-        addAll(ASSISTANT_HANDOFF_ACTIVITY_NAMES)
-        val queryIntent = Intent(Intent.ACTION_MAIN).setPackage(GOOGLE_APP_PACKAGE)
-        addAll(
-            packageManager.queryIntentActivities(queryIntent, 0)
-                .map { it.activityInfo.name }
-                .filter { it.contains("AssistantHandoff", ignoreCase = true) }
-        )
-    }.distinct()
-
-    for (activityName in candidates) {
-        val intent = Intent(Intent.ACTION_MAIN)
-            .setComponent(ComponentName(GOOGLE_APP_PACKAGE, activityName))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        val result = runCatching {
-            context.startActivity(intent)
-        }.onFailure { e ->
-            if (e !is ActivityNotFoundException && e !is SecurityException) {
-                val errMsg = "triggerAssistantHandoff failed: $activityName\n" + e.stackTraceToString()
-                module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
-            }
-        }.isSuccess
-
-        if (result) {
-            if (vibrate) vibrateOnTrigger(context)
-            return true
-        }
-    }
-
-    return false
-}
-
 @SuppressLint("PrivateApi")
-fun triggerCircleToSearch(
-    entryPoint: Int,
-    context: Context?,
-    vibrate: Boolean,
-    allowVisFallback: Boolean = true,
-): Boolean {
-    if (context != null && triggerAssistantHandoff(context, vibrate)) {
-        return true
-    }
-    if (!allowVisFallback) {
-        return false
-    }
-
+fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean): Boolean {
     val result =  runCatching {
         val bundle = Bundle()
         if (BuildConfig.APP_NAME == "MiCTS") {
@@ -140,7 +81,7 @@ class MainActivity : ComponentActivity() {
         if (delayMs > 0) {
             delay(delayMs)
         }
-        if (!triggerCircleToSearch(1, this, vibrate, ALLOW_ACTIVITY_VIS_FALLBACK)) {
+        if (!triggerCircleToSearch(1, this, vibrate)) {
             Toast.makeText(this, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
         }
         finish()
