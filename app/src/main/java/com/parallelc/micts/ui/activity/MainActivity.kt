@@ -18,13 +18,10 @@ import android.os.Vibrator
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.enableEdgeToEdge
-import androidx.lifecycle.lifecycleScope
 import com.parallelc.micts.BuildConfig
 import com.parallelc.micts.R
 import com.parallelc.micts.config.AppConfig.CONFIG_NAME
 import com.parallelc.micts.config.AppConfig.DEFAULT_CONFIG
-import com.parallelc.micts.config.AppConfig.KEY_ASYNC_TRIGGER
 import com.parallelc.micts.config.AppConfig.KEY_DEFAULT_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_TILE_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_VIBRATE
@@ -33,7 +30,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 const val LOG_TAG = BuildConfig.APP_NAME
@@ -159,33 +155,32 @@ fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean):
 }
 
 class MainActivity : ComponentActivity() {
-    suspend fun delayAndTrigger(delayMs: Long, vibrate: Boolean) {
+    private fun scheduleTrigger(delayMs: Long, vibrate: Boolean) {
         val startedAt = SystemClock.elapsedRealtime()
-        Log.i(LOG_TAG, "delayAndTrigger: start delayMs=$delayMs")
-        if (delayMs > 0) {
-            delay(delayMs)
-        }
-        Log.i(LOG_TAG, "delayAndTrigger: handoff + VIS combo start")
-        launchAssistantHandoff(this, false)
+        val appContext = applicationContext
+        val triggerFailedText = getString(R.string.trigger_failed)
+        Log.i(LOG_TAG, "scheduleTrigger: start delayMs=$delayMs")
         CoroutineScope(Dispatchers.Default).launch {
+            if (delayMs > 0) {
+                delay(delayMs)
+            }
+            Log.i(LOG_TAG, "scheduleTrigger: handoff + VIS combo start")
+            Handler(Looper.getMainLooper()).post {
+                launchAssistantHandoff(appContext, false)
+            }
             delay(30)
-            if (!triggerCircleToSearch(1, applicationContext, vibrate)) {
+            if (!triggerCircleToSearch(1, appContext, vibrate)) {
                 Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(applicationContext, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(appContext, triggerFailedText, Toast.LENGTH_SHORT).show()
                 }
             }
+            Log.i(LOG_TAG, "scheduleTrigger: dispatched duration=${SystemClock.elapsedRealtime() - startedAt}ms")
         }
-        Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
-        finish()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         val startedAt = SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-        }
         val prefs = getSharedPreferences(CONFIG_NAME, MODE_PRIVATE)
         val key = if (intent.getBooleanExtra("from_tile", false)) KEY_TILE_DELAY else KEY_DEFAULT_DELAY
         val delayMs = prefs.getLong(key, DEFAULT_CONFIG[key] as Long)
@@ -195,14 +190,8 @@ class MainActivity : ComponentActivity() {
             "MainActivity.onCreate: action=${intent.action} categories=${intent.categories} fromTile=${intent.getBooleanExtra("from_tile", false)} initDuration=${SystemClock.elapsedRealtime() - startedAt}ms"
         )
 
-        if (prefs.getBoolean(KEY_ASYNC_TRIGGER, DEFAULT_CONFIG[KEY_ASYNC_TRIGGER] as Boolean)) {
-            lifecycleScope.launch {
-                delayAndTrigger(delayMs, vibrate)
-            }
-        } else {
-            runBlocking {
-                delayAndTrigger(delayMs, vibrate)
-            }
-        }
+        scheduleTrigger(delayMs, vibrate)
+        finish()
+        overridePendingTransition(0, 0)
     }
 }
