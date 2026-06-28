@@ -1,7 +1,10 @@
 package com.parallelc.micts.ui.activity
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
@@ -29,9 +32,75 @@ import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 const val LOG_TAG = BuildConfig.APP_NAME
+private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
+private val ASSISTANT_HANDOFF_ACTIVITY_NAMES = listOf(
+    "com.google.android.apps.search.assistant.surfaces.launcher.AssistantHandoffActivity",
+    "com.google.android.apps.search.assistant.surfaces.launcher.handoff.AssistantHandoffActivity",
+    "com.google.android.apps.search.assistant.surfaces.launcher.LauncherAssistantHandoffActivity",
+    "com.google.android.googlequicksearchbox.Launch.AssistantHandoffActivity",
+)
+
+private fun vibrateOnTrigger(context: Context) {
+    runCatching {
+        (context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).run {
+            val attr = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
+                .setFlags(128)
+                .build()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK), attr)
+            } else {
+                vibrate(longArrayOf(0, 1, 75, 76), -1, attr)
+            }
+        }
+    }.onFailure { e ->
+        val errMsg = "triggerCircleToSearch vibrate failed: " + e.stackTraceToString()
+        module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
+    }
+}
+
+private fun triggerAssistantHandoff(context: Context, vibrate: Boolean): Boolean {
+    if (BuildConfig.APP_NAME != "MiCTS") return false
+
+    val packageManager = context.packageManager
+    val candidates = buildList {
+        addAll(ASSISTANT_HANDOFF_ACTIVITY_NAMES)
+        val queryIntent = Intent(Intent.ACTION_MAIN).setPackage(GOOGLE_APP_PACKAGE)
+        addAll(
+            packageManager.queryIntentActivities(queryIntent, 0)
+                .map { it.activityInfo.name }
+                .filter { it.contains("AssistantHandoff", ignoreCase = true) }
+        )
+    }.distinct()
+
+    for (activityName in candidates) {
+        val intent = Intent(Intent.ACTION_MAIN)
+            .setComponent(ComponentName(GOOGLE_APP_PACKAGE, activityName))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val result = runCatching {
+            context.startActivity(intent)
+        }.onFailure { e ->
+            if (e !is ActivityNotFoundException && e !is SecurityException) {
+                val errMsg = "triggerAssistantHandoff failed: $activityName\n" + e.stackTraceToString()
+                module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
+            }
+        }.isSuccess
+
+        if (result) {
+            if (vibrate) vibrateOnTrigger(context)
+            return true
+        }
+    }
+
+    return false
+}
 
 @SuppressLint("PrivateApi")
 fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean): Boolean {
+    if (context != null && triggerAssistantHandoff(context, vibrate)) {
+        return true
+    }
+
     val result =  runCatching {
         val bundle = Bundle()
         if (BuildConfig.APP_NAME == "MiCTS") {
@@ -52,22 +121,7 @@ fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean):
         module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
     }.getOrDefault(false)
     if (result && vibrate && context != null) {
-        runCatching {
-            (context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator).run {
-                val attr = AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_ACCESSIBILITY)
-                    .setFlags(128)
-                    .build()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    vibrate(VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK), attr)
-                } else {
-                    vibrate(longArrayOf(0, 1, 75, 76), -1, attr)
-                }
-            }
-        }.onFailure { e ->
-            val errMsg = "triggerCircleToSearch vibrate failed: " + e.stackTraceToString()
-            module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
-        }
+        vibrateOnTrigger(context)
     }
     return result
 }
