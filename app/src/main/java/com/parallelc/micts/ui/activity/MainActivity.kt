@@ -1,7 +1,6 @@
 package com.parallelc.micts.ui.activity
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Context
@@ -36,6 +35,7 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
 const val LOG_TAG = BuildConfig.APP_NAME
 private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
 private val ASSISTANT_HANDOFF_ACTIVITY_CANDIDATES = listOf(
+    "com.google.android.apps.gsa.assistant.handoff.AssistantHandoffActivity",
     "com.google.android.apps.search.assistant.surfaces.launcher.AssistantHandoffActivity",
     "com.google.android.apps.search.assistant.surfaces.launcher.handoff.AssistantHandoffActivity",
     "com.google.android.apps.search.assistant.surfaces.launcher.LauncherAssistantHandoffActivity",
@@ -106,9 +106,7 @@ private fun launchAssistantHandoff(context: Context, vibrate: Boolean): Boolean 
     val component = resolveAssistantHandoffActivity(context) ?: return false
     val intent = Intent(Intent.ACTION_MAIN)
         .setComponent(component)
-    if (context !is Activity) {
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     return runCatching {
         context.startActivity(intent)
