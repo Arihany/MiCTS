@@ -9,7 +9,9 @@ import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -27,6 +29,7 @@ import com.parallelc.micts.config.AppConfig.KEY_DEFAULT_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_TILE_DELAY
 import com.parallelc.micts.config.AppConfig.KEY_VIBRATE
 import com.parallelc.micts.module
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -164,19 +167,16 @@ class MainActivity : ComponentActivity() {
         }
         Log.i(LOG_TAG, "delayAndTrigger: handoff + VIS combo start")
         launchAssistantHandoff(this, false)
-        window.decorView.postDelayed({
-            lifecycleScope.launch(Dispatchers.Default) {
-                if (!triggerCircleToSearch(1, this@MainActivity, vibrate)) {
-                    runOnUiThread {
-                        Toast.makeText(this@MainActivity, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
-                    }
+        CoroutineScope(Dispatchers.Default).launch {
+            delay(30)
+            if (!triggerCircleToSearch(1, applicationContext, vibrate)) {
+                Handler(Looper.getMainLooper()).post {
+                    Toast.makeText(applicationContext, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
                 }
             }
-        }, 30)
-        window.decorView.postDelayed({
-            Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
-            finish()
-        }, 500)
+        }
+        Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
+        finish()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
