@@ -32,6 +32,7 @@ import kotlinx.coroutines.runBlocking
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 const val LOG_TAG = BuildConfig.APP_NAME
+private const val ALLOW_ACTIVITY_VIS_FALLBACK = false
 private const val GOOGLE_APP_PACKAGE = "com.google.android.googlequicksearchbox"
 private val ASSISTANT_HANDOFF_ACTIVITY_NAMES = listOf(
     "com.google.android.apps.search.assistant.surfaces.launcher.AssistantHandoffActivity",
@@ -96,9 +97,17 @@ private fun triggerAssistantHandoff(context: Context, vibrate: Boolean): Boolean
 }
 
 @SuppressLint("PrivateApi")
-fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean): Boolean {
+fun triggerCircleToSearch(
+    entryPoint: Int,
+    context: Context?,
+    vibrate: Boolean,
+    allowVisFallback: Boolean = true,
+): Boolean {
     if (context != null && triggerAssistantHandoff(context, vibrate)) {
         return true
+    }
+    if (!allowVisFallback) {
+        return false
     }
 
     val result =  runCatching {
@@ -131,7 +140,7 @@ class MainActivity : ComponentActivity() {
         if (delayMs > 0) {
             delay(delayMs)
         }
-        if (!triggerCircleToSearch(1, this, vibrate)) {
+        if (!triggerCircleToSearch(1, this, vibrate, ALLOW_ACTIVITY_VIS_FALLBACK)) {
             Toast.makeText(this, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
         }
         finish()
