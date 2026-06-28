@@ -51,6 +51,7 @@ private fun vibrateOnTrigger(context: Context) {
 
 @SuppressLint("PrivateApi")
 fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean): Boolean {
+    val startedAt = SystemClock.elapsedRealtime()
     val result =  runCatching {
         val bundle = Bundle()
         if (BuildConfig.APP_NAME == "MiCTS") {
@@ -58,6 +59,7 @@ fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean):
             bundle.putInt("omni.entry_point", entryPoint)
             bundle.putBoolean("micts_trigger", true)
         }
+        Log.i(LOG_TAG, "triggerCircleToSearch: start entryPoint=$entryPoint")
         val iVimsClass = Class.forName("com.android.internal.app.IVoiceInteractionManagerService")
         val vis = Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java).invoke(null, "voiceinteraction")
         val vims = Class.forName("com.android.internal.app.IVoiceInteractionManagerService\$Stub").getMethod("asInterface", IBinder::class.java).invoke(null, vis)
@@ -70,6 +72,7 @@ fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean):
         val errMsg = "triggerCircleToSearch invoke omni failed: " + e.stackTraceToString()
         module?.log(Log.ERROR, LOG_TAG, errMsg) ?: Log.e(LOG_TAG, errMsg)
     }.getOrDefault(false)
+    Log.i(LOG_TAG, "triggerCircleToSearch: result=$result duration=${SystemClock.elapsedRealtime() - startedAt}ms")
     if (result && vibrate && context != null) {
         vibrateOnTrigger(context)
     }
@@ -78,16 +81,20 @@ fun triggerCircleToSearch(entryPoint: Int, context: Context?, vibrate: Boolean):
 
 class MainActivity : ComponentActivity() {
     suspend fun delayAndTrigger(delayMs: Long, vibrate: Boolean) {
+        val startedAt = SystemClock.elapsedRealtime()
+        Log.i(LOG_TAG, "delayAndTrigger: start delayMs=$delayMs")
         if (delayMs > 0) {
             delay(delayMs)
         }
         if (!triggerCircleToSearch(1, this, vibrate)) {
             Toast.makeText(this, getString(R.string.trigger_failed), Toast.LENGTH_SHORT).show()
         }
+        Log.i(LOG_TAG, "delayAndTrigger: finish duration=${SystemClock.elapsedRealtime() - startedAt}ms")
         finish()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val startedAt = SystemClock.elapsedRealtime()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -97,6 +104,10 @@ class MainActivity : ComponentActivity() {
         val key = if (intent.getBooleanExtra("from_tile", false)) KEY_TILE_DELAY else KEY_DEFAULT_DELAY
         val delayMs = prefs.getLong(key, DEFAULT_CONFIG[key] as Long)
         val vibrate = prefs.getBoolean(KEY_VIBRATE, DEFAULT_CONFIG[KEY_VIBRATE] as Boolean)
+        Log.i(
+            LOG_TAG,
+            "MainActivity.onCreate: action=${intent.action} categories=${intent.categories} fromTile=${intent.getBooleanExtra("from_tile", false)} initDuration=${SystemClock.elapsedRealtime() - startedAt}ms"
+        )
 
         if (prefs.getBoolean(KEY_ASYNC_TRIGGER, DEFAULT_CONFIG[KEY_ASYNC_TRIGGER] as Boolean)) {
             lifecycleScope.launch {
